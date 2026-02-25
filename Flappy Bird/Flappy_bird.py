@@ -28,10 +28,10 @@ WIN_HEIGHT = 800
 GENERATION = 0
 
 BASE_DIR = Path(__file__).resolve().parent
-IMAGES_DIR = BASE_DIR / "imgs"
+IMAGES_DIR = BASE_DIR / "assets" / "imgs"
 CONFIG_FILE = BASE_DIR / "NEAT_configuration_file.txt"
-SAVE_FILE = BASE_DIR / "best_genome.pkl"
-CHECKPOINT_FILE = BASE_DIR / "checkpoint.pkl"
+SAVE_FILE = BASE_DIR / "data" / "best_genome.pkl"
+CHECKPOINT_FILE = BASE_DIR / "data" / "checkpoint.pkl"
 
 BEST_GENOME = None
 BEST_FITNESS = -float("inf")
