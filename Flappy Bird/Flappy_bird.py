@@ -488,11 +488,12 @@ def purge_out_of_bounds(birds, nets, genomes):
 	@param config Configuration NEAT.
 """
 def evaluate_genomes(genomes_list, config):
-	global GENERATION
+	global GENERATION, GAME_STATE
 	GENERATION += 1
 	nets, genomes, birds = _initialize_generation(genomes_list, config)
 	base, pipes, window, clock = _initialize_game()
 	_run_game_loop(birds, nets, genomes, pipes, base, window, clock)
+	_reload_game_state_from_checkpoint()
 
 
 """
@@ -526,7 +527,6 @@ def _initialize_game():
 	clock = pygame.time.Clock()
 	if GAME_STATE is not None:
 		base, pipes = _restore_game_elements()
-		GAME_STATE = None
 	else:
 		base = Base(730)
 		pipes = [Pipe(700)]
@@ -571,6 +571,8 @@ def _restore_game_elements():
 """
 def _update_game_state(birds, pipes, base, score):
 	global GAME_STATE
+	if score <= 0:
+		return
 	birds_data = [{"pos_x": b.pos_x, "pos_y": b.pos_y, "velocity": b.velocity, "tilt": b.tilt} for b in birds]
 	pipes_data = [{"pos_x": p.pos_x, "height": p.height, "passed": p.passed} for p in pipes]
 	GAME_STATE = {
@@ -592,6 +594,22 @@ def _restore_game_state_score():
 	if GAME_STATE is None:
 		return 0
 	return GAME_STATE.get("score", 0)
+
+
+"""
+	Recharge GAME_STATE depuis le fichier checkpoint.
+	Appelee apres chaque generation pour reprendre a la derniere sauvegarde valide.
+"""
+def _reload_game_state_from_checkpoint():
+	global GAME_STATE
+	if not CHECKPOINT_FILE.exists():
+		return
+	try:
+		with open(CHECKPOINT_FILE, "rb") as fichier:
+			checkpoint_data = pickle.load(fichier)
+		GAME_STATE = checkpoint_data.get("game_state", None)
+	except (IOError, pickle.UnpicklingError):
+		pass
 
 
 # ------------------------------------------------------------------------------
