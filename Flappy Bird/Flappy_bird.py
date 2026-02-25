@@ -9,6 +9,7 @@ from pathlib import Path
 import random
 import pickle
 import atexit
+import time
 
 import neat
 import pygame
@@ -37,6 +38,8 @@ BEST_GENOME = None
 BEST_FITNESS = -float("inf")
 CURRENT_POPULATION = None
 GAME_STATE = None
+FAST_DEATH_COUNT = 0
+LAST_GEN_TIME = 0
 
 # ==============================================================================
 # Fonctions utilitaires
@@ -489,9 +492,11 @@ def purge_out_of_bounds(birds, nets, genomes):
 """
 def evaluate_genomes(genomes_list, config):
 	global GENERATION, GAME_STATE
+	_check_fast_death_reset()
 	GENERATION += 1
-	nets, genomes, birds = _initialize_generation(genomes_list, config)
 	base, pipes, window, clock = _initialize_game()
+	safe_x = _get_safe_bird_x(pipes)
+	nets, genomes, birds = _initialize_generation(genomes_list, config, safe_x)
 	_run_game_loop(birds, nets, genomes, pipes, base, window, clock)
 	_reload_game_state_from_checkpoint()
 
@@ -503,14 +508,14 @@ def evaluate_genomes(genomes_list, config):
 	@param config Configuration NEAT.
 	@return Tuple (nets, genomes, birds).
 """
-def _initialize_generation(genomes_list, config):
+def _initialize_generation(genomes_list, config, bird_x=230):
 	nets = []
 	genomes = []
 	birds = []
 	for _, genome in genomes_list:
 		net = neat.nn.FeedForwardNetwork.create(genome, config)
 		nets.append(net)
-		birds.append(Bird(230, 350))
+		birds.append(Bird(bird_x, 350))
 		genome.fitness = 0
 		genomes.append(genome)
 	return nets, genomes, birds
@@ -543,19 +548,105 @@ def _restore_game_elements():
 	base = Base(730)
 	base.pos_x1 = GAME_STATE.get("base_x1", 0)
 	base.pos_x2 = GAME_STATE.get("base_x2", base.WIDTH)
+	pipes = _restore_pipes_with_health_check()
+	saved_score = GAME_STATE.get("score", 0)
+	print(f"Etat jeu restaure : {len(pipes)} tuyaux, score={saved_score}")
+	return base, pipes
+
+
+"""
+	Restaure les tuyaux avec health check.
+	Repositionne les tuyaux pour que les oiseaux ne meurent pas immediatement.
+
+	@return Liste des tuyaux repositionnes.
+"""
+def _restore_pipes_with_health_check():
+	global GAME_STATE
+	pipes_data = GAME_STATE.get("pipes", [])
+	if not pipes_data:
+		return [Pipe(700)]
 	pipes = []
-	for pipe_data in GAME_STATE.get("pipes", []):
+	for pipe_data in pipes_data:
 		pipe = Pipe(pipe_data["pos_x"])
 		pipe.height = pipe_data["height"]
 		pipe.passed = pipe_data["passed"]
 		pipe.top = pipe.height - pipe.PIPE_TOP.get_height()
 		pipe.bottom = pipe.height + pipe.GAP
 		pipes.append(pipe)
+	return pipes
+
+
+"""
+	Calcule la position X safe pour les oiseaux entre 2 tuyaux.
+
+	@param pipes Liste des tuyaux.
+	@return Position X safe pour les oiseaux.
+"""
+def _get_safe_bird_x(pipes):
+	default_x = 230
 	if not pipes:
-		pipes = [Pipe(700)]
-	saved_score = GAME_STATE.get("score", 0)
-	print(f"Etat jeu restaure : {len(pipes)} tuyaux, score={saved_score}")
-	return base, pipes
+		print(f"DEBUG: pas de pipes, bird_x={default_x}")
+		return default_x
+	pipes_sorted = sorted(pipes, key=lambda p: p.pos_x)
+	print(f"DEBUG: pipes positions = {[p.pos_x for p in pipes_sorted]}")
+	for idx in range(len(pipes_sorted) - 1):
+		current_pipe = pipes_sorted[idx]
+		next_pipe = pipes_sorted[idx + 1]
+		gap_start = current_pipe.pos_x + current_pipe.PIPE_TOP.get_width() + 20
+		gap_end = next_pipe.pos_x - 20
+		if gap_end > gap_start:
+			result = (gap_start + gap_end) // 2
+			result = min(result, WIN_WIDTH - 100)
+			print(f"DEBUG: gap trouve entre {gap_start} et {gap_end}, bird_x={result}")
+			return result
+	first_pipe = pipes_sorted[0]
+	if first_pipe.pos_x > 100:
+		result = first_pipe.pos_x // 2
+		print(f"DEBUG: avant premier tuyau, bird_x={result}")
+		return result
+	print(f"DEBUG: fallback, bird_x={default_x}")
+	return default_x
+
+# ------------------------------------------------------------------------------
+# Detection des morts rapides (reset automatique)
+# ------------------------------------------------------------------------------
+
+"""
+	Detecte si 3 generations meurent en moins de 3 secondes apres restauration.
+	Si oui, supprime les sauvegardes et reset le jeu.
+"""
+def _check_fast_death_reset():
+	global FAST_DEATH_COUNT, LAST_GEN_TIME, GAME_STATE, GENERATION
+	current_time = time.time()
+	if GAME_STATE is None:
+		FAST_DEATH_COUNT = 0
+		LAST_GEN_TIME = current_time
+		return
+	time_since_last = current_time - LAST_GEN_TIME
+	if time_since_last < 1.0:
+		FAST_DEATH_COUNT += 1
+		print(f"Mort rapide detectee ({FAST_DEATH_COUNT}/3)")
+	else:
+		FAST_DEATH_COUNT = 0
+	LAST_GEN_TIME = current_time
+	if FAST_DEATH_COUNT >= 3:
+		print("3 morts rapides consecutives - Reset des sauvegardes")
+		_delete_save_files()
+		GAME_STATE = None
+		GENERATION = 0
+		FAST_DEATH_COUNT = 0
+
+
+"""
+	Supprime les fichiers de sauvegarde dans data/.
+"""
+def _delete_save_files():
+	if SAVE_FILE.exists():
+		SAVE_FILE.unlink()
+		print(f"Supprime : {SAVE_FILE}")
+	if CHECKPOINT_FILE.exists():
+		CHECKPOINT_FILE.unlink()
+		print(f"Supprime : {CHECKPOINT_FILE}")
 
 # ------------------------------------------------------------------------------
 # Gestion de letat du jeu
