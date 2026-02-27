@@ -1,7 +1,5 @@
 # Flappy Bird NEAT
 
-Version corrigée et factuellement alignée avec votre implémentation :
-
 Jeu Flappy Bird intégrant une intelligence artificielle basée sur NEAT (NeuroEvolution of Augmenting Topologies), permettant l’évolution progressive de réseaux de neurones artificiels sans architecture prédéfinie. Chaque oiseau est piloté par un réseau neuronal dont la topologie et les poids évoluent par sélection naturelle, mutation et reproduction à partir d’une population initiale.
 
 À chaque frame, le réseau reçoit exactement trois entrées issues de l’état courant du jeu : la position verticale de l’oiseau (`bird.pos_y`), la distance absolue entre cette position et le bord supérieur du trou du tuyau cible (`abs(bird.pos_y - focus_pipe.height)`), ainsi que la distance absolue entre cette position et le bord inférieur du trou (`abs(bird.pos_y - focus_pipe.bottom)`). Ces valeurs sont utilisées brutes (en pixels), sans normalisation préalable. La sortie du réseau détermine l’action de saut. La fonction de fitness récompense principalement la survie et le franchissement des tuyaux, tout en pénalisant les collisions.
